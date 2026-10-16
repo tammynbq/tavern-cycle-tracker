@@ -1,0 +1,11 @@
+{
+    "display_name": "生理紀錄小幫手 Cycle Tracker",
+    "loading_order": 100,
+    "requires": [],
+    "optional": [],
+    "js": "index.js",
+    "css": "style.css",
+    "author": "tammynbq",
+    "version": "0.1.0",
+    "homePage": ""
+}
