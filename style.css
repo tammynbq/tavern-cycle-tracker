@@ -53,3 +53,11 @@
 .ctk .ctk-sw.ovulation { box-shadow: inset 0 0 0 2px var(--ctk-ovulation); }
 .ctk .ctk-day-detail:not(:empty) { margin: 6px 0; padding: 6px; border: 1px solid var(--SmartThemeBorderColor); border-radius: 8px; }
 .ctk .ctk-day-title { font-weight: bold; margin-bottom: 4px; }
+
+/* 摺疊區塊 */
+.ctk details.ctk-sec { margin-top: 10px; border-top: 1px solid var(--SmartThemeBorderColor); padding-top: 6px; }
+.ctk details.ctk-sec > summary { cursor: pointer; font-weight: bold; padding: 4px 0; list-style: none; display: flex; align-items: center; gap: 6px; user-select: none; }
+.ctk details.ctk-sec > summary::-webkit-details-marker { display: none; }
+.ctk details.ctk-sec > summary::before { content: '▸'; display: inline-block; transition: transform 0.15s; opacity: 0.7; }
+.ctk details.ctk-sec[open] > summary::before { transform: rotate(90deg); }
+.ctk details.ctk-sec[open] > summary { margin-bottom: 4px; }

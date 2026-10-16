@@ -22,6 +22,7 @@ const DEFAULT_SETTINGS = {
     recentDays: 60,
     defaultCycle: 28,
     customTypes: '',
+    sections: { events: true, memos: true, settings: false },
     data: {},
 };
 
@@ -294,7 +295,7 @@ async function processMessage(mesId, { mergeExisting }) {
 function describeOps(ops) {
     return ops.map(op => {
         if (op.kind === 'log') return `${op.attrs.id ? '修改' : '記錄'} ${typeLabel(op.attrs.type ?? '')} ${op.body}`.trim();
-        if (op.kind === 'memo') return `${op.attrs.id ? '修改' : '新增'}備忘：${op.body}`;
+        if (op.kind === 'memo') return `小本本${op.attrs.id ? '修改' : '新增'}：${op.body}`;
         return `刪除 ${op.attrs.id}`;
     }).join('\n');
 }
@@ -489,7 +490,8 @@ const PANEL_HTML = `
       </div>
       <div id="ctk_day_detail" class="ctk-day-detail"></div>
 
-      <h4>新增／修改紀錄</h4>
+      <details class="ctk-sec" data-sec="events">
+      <summary>新增／修改紀錄</summary>
       <div class="ctk-row">
         <select id="ctk_type" class="text_pole"></select>
         <input id="ctk_date" type="date" class="text_pole">
@@ -500,16 +502,20 @@ const PANEL_HTML = `
         <div id="ctk_cancel_event" class="menu_button ctk-hidden">取消修改</div>
       </div>
       <div id="ctk_events" class="ctk-list"></div>
+      </details>
 
-      <h4>AI 的備忘</h4>
-      <textarea id="ctk_memo_text" class="text_pole" rows="2" placeholder="新增備忘"></textarea>
+      <details class="ctk-sec" data-sec="memos">
+      <summary>他的小本本</summary>
+      <textarea id="ctk_memo_text" class="text_pole" rows="2" placeholder="幫他寫一筆…"></textarea>
       <div class="ctk-row">
-        <div id="ctk_save_memo" class="menu_button">新增備忘</div>
+        <div id="ctk_save_memo" class="menu_button">寫進小本本</div>
         <div id="ctk_cancel_memo" class="menu_button ctk-hidden">取消修改</div>
       </div>
       <div id="ctk_memos" class="ctk-list"></div>
+      </details>
 
-      <h4>設定</h4>
+      <details class="ctk-sec" data-sec="settings">
+      <summary>設定</summary>
       <label>注入位置
         <select id="ctk_position" class="text_pole">
           <option value="0">系統提示內</option>
@@ -534,6 +540,7 @@ const PANEL_HTML = `
         <input id="ctk_import_file" type="file" accept=".json,application/json" hidden>
       </div>
       <pre id="ctk_preview_box" class="ctk-preview ctk-hidden"></pre>
+      </details>
     </div>
   </div>
 </div>`;
@@ -673,7 +680,7 @@ function renderLists() {
           <i class="fa-solid fa-pen ctk-edit-memo" title="修改"></i>
           <i class="fa-solid fa-trash ctk-del-memo" title="刪除"></i>
         </span>
-      </div>`).join('') : '<div class="ctk-empty">還沒有備忘</div>');
+      </div>`).join('') : '<div class="ctk-empty">小本本還是空的</div>');
 
     if (!$('#ctk_preview_box').hasClass('ctk-hidden')) $('#ctk_preview_box').text(buildPrompt());
 }
@@ -689,7 +696,7 @@ function resetEventForm() {
 function resetMemoForm() {
     editingMemo = null;
     $('#ctk_memo_text').val('');
-    $('#ctk_save_memo').text('新增備忘');
+    $('#ctk_save_memo').text('寫進小本本');
     $('#ctk_cancel_memo').addClass('ctk-hidden');
 }
 
@@ -701,6 +708,13 @@ async function confirmDelete(text) {
 
 function bindPanel() {
     const s = settings();
+    // 摺疊區塊：記住每個區塊開或關
+    $('#ctk_settings details.ctk-sec').each(function () {
+        this.open = Boolean(s.sections?.[this.dataset.sec]);
+    }).on('toggle', function () {
+        s.sections = { ...s.sections, [this.dataset.sec]: this.open };
+        save();
+    });
     $('#ctk_enabled').prop('checked', s.enabled).on('change', function () {
         s.enabled = this.checked;
         afterChange();
