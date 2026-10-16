@@ -13,3 +13,43 @@
 .ctk .ctk-empty { opacity: 0.6; padding: 4px 6px; font-size: 0.9em; }
 .ctk .ctk-preview { white-space: pre-wrap; font-size: 0.85em; max-height: 300px; overflow-y: auto; padding: 6px; border: 1px solid var(--SmartThemeBorderColor); border-radius: 6px; }
 .ctk .ctk-hidden { display: none !important; }
+
+/* 月曆 */
+.ctk {
+    --ctk-period: #e2557a;
+    --ctk-fertile: rgba(70, 160, 230, 0.28);
+    --ctk-ovulation: #3d8fd6;
+}
+.ctk .ctk-cal-nav { display: flex; align-items: center; gap: 12px; margin: 4px 0 6px; }
+.ctk .ctk-cal-nav i { cursor: pointer; padding: 6px; opacity: 0.8; }
+.ctk .ctk-cal-nav i:hover { opacity: 1; }
+.ctk #ctk_cal_title { font-weight: bold; min-width: 7em; text-align: center; }
+.ctk .ctk-cal-nav .menu_button { margin-left: auto; }
+.ctk .ctk-cal { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; }
+.ctk .ctk-cal-head { text-align: center; font-size: 0.8em; opacity: 0.6; padding-bottom: 2px; }
+.ctk .ctk-day {
+    position: relative; aspect-ratio: 1; min-height: 34px; border-radius: 8px; cursor: pointer;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    border: 1px solid transparent; background: color-mix(in srgb, var(--SmartThemeBodyColor) 6%, transparent);
+    user-select: none;
+}
+.ctk .ctk-day:hover { border-color: var(--SmartThemeBorderColor); }
+.ctk .ctk-num { font-size: 0.9em; line-height: 1.1; }
+.ctk .ctk-marks { font-size: 0.6em; line-height: 1; min-height: 1em; }
+.ctk .ctk-day.period { background: var(--ctk-period); color: #fff; }
+.ctk .ctk-day.period-est { background: color-mix(in srgb, var(--ctk-period) 45%, transparent); }
+.ctk .ctk-day.period-pred { border: 1.5px dashed var(--ctk-period); }
+.ctk .ctk-day.fertile { background: var(--ctk-fertile); }
+.ctk .ctk-day.ovulation { box-shadow: inset 0 0 0 2px var(--ctk-ovulation); }
+.ctk .ctk-day.today .ctk-num { font-weight: bold; text-decoration: underline; text-underline-offset: 3px; }
+.ctk .ctk-day.selected { outline: 2px solid var(--SmartThemeBodyColor); outline-offset: 1px; }
+.ctk .ctk-legend { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 0.8em; opacity: 0.85; margin: 6px 0; }
+.ctk .ctk-legend span { display: inline-flex; align-items: center; gap: 4px; }
+.ctk .ctk-sw { display: inline-block; width: 12px; height: 12px; border-radius: 3px; border: 1px solid transparent; }
+.ctk .ctk-sw.period { background: var(--ctk-period); }
+.ctk .ctk-sw.period-est { background: color-mix(in srgb, var(--ctk-period) 45%, transparent); }
+.ctk .ctk-sw.period-pred { border: 1.5px dashed var(--ctk-period); }
+.ctk .ctk-sw.fertile { background: var(--ctk-fertile); }
+.ctk .ctk-sw.ovulation { box-shadow: inset 0 0 0 2px var(--ctk-ovulation); }
+.ctk .ctk-day-detail:not(:empty) { margin: 6px 0; padding: 6px; border: 1px solid var(--SmartThemeBorderColor); border-radius: 8px; }
+.ctk .ctk-day-title { font-weight: bold; margin-bottom: 4px; }

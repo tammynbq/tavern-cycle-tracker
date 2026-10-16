@@ -336,14 +336,15 @@ function sortedEvents(state) {
     return [...state.events].sort((a, b) => (a.date === b.date ? (a.id > b.id ? 1 : -1) : a.date > b.date ? 1 : -1));
 }
 
-function periodSummary(state) {
-    const s = settings();
+const DEFAULT_PERIOD_LEN = 5;
+
+// 統計週期：每次經期的範圍、平均週期與經期天數
+function computeCycle(state) {
     const t = today();
     const starts = state.events.filter(e => e.type === 'period_start').map(e => e.date).sort();
     const ends = state.events.filter(e => e.type === 'period_end').map(e => e.date).sort();
-    if (!starts.length) return '經期：尚無紀錄';
+    if (!starts.length) return null;
 
-    const lastStart = starts[starts.length - 1];
     const cycles = [];
     for (let i = 1; i < starts.length; i++) {
         const d = diffDays(starts[i - 1], starts[i]);
@@ -351,10 +352,32 @@ function periodSummary(state) {
     }
     const recent = cycles.slice(-6);
     const avg = recent.length ? Math.round(recent.reduce((a, b) => a + b, 0) / recent.length) : null;
-    const cycleLen = avg ?? (Number(s.defaultCycle) || 28);
+    const cycleLen = avg ?? (Number(settings().defaultCycle) || 28);
+
+    const ranges = starts.map((start, i) => {
+        const nextStart = starts[i + 1];
+        const end = ends.find(e => e >= start && diffDays(start, e) <= 14 && (!nextStart || e < nextStart));
+        return { start, end: end ?? null };
+    });
+    const known = ranges.filter(r => r.end).slice(-6).map(r => diffDays(r.start, r.end) + 1);
+    const periodLen = known.length ? Math.round(known.reduce((a, b) => a + b, 0) / known.length) : DEFAULT_PERIOD_LEN;
+    for (const r of ranges) {
+        if (r.end) continue;
+        // 沒記錄結束：最近一次且仍在經期內就畫到今天，否則以平均天數估計
+        const ongoing = r === ranges[ranges.length - 1] && diffDays(r.start, t) < 10;
+        r.estEnd = ongoing ? (diffDays(r.start, t) + 1 > periodLen ? t : addDays(r.start, periodLen - 1)) : addDays(r.start, periodLen - 1);
+    }
+    return { starts, ends, ranges, recent, avg, cycleLen, periodLen, lastStart: starts[starts.length - 1] };
+}
+
+function periodSummary(state) {
+    const t = today();
+    const cyc = computeCycle(state);
+    if (!cyc) return '經期：尚無紀錄';
+    const { lastStart, recent, avg, cycleLen } = cyc;
 
     const lines = [];
-    const end = ends.find(e => e >= lastStart);
+    const end = cyc.ranges[cyc.ranges.length - 1].end;
     const day = diffDays(lastStart, t) + 1;
     if (end) {
         lines.push(`最近一次 ${shortDate(lastStart)} 開始、${shortDate(end)} 結束（${diffDays(lastStart, end) + 1} 天）`);
@@ -449,6 +472,23 @@ const PANEL_HTML = `
       <label class="checkbox_label"><input id="ctk_enabled" type="checkbox"> 啟用</label>
       <div class="ctk-char">目前角色：<span id="ctk_char">—</span></div>
 
+      <h4>月曆</h4>
+      <div class="ctk-cal-nav">
+        <i id="ctk_cal_prev" class="fa-solid fa-chevron-left" title="上個月"></i>
+        <span id="ctk_cal_title"></span>
+        <i id="ctk_cal_next" class="fa-solid fa-chevron-right" title="下個月"></i>
+        <div id="ctk_cal_today" class="menu_button">今天</div>
+      </div>
+      <div id="ctk_calendar" class="ctk-cal"></div>
+      <div class="ctk-legend">
+        <span><i class="ctk-sw period"></i>經期</span>
+        <span><i class="ctk-sw period-est"></i>經期（推估）</span>
+        <span><i class="ctk-sw period-pred"></i>預測經期</span>
+        <span><i class="ctk-sw fertile"></i>排卵期</span>
+        <span><i class="ctk-sw ovulation"></i>排卵日</span>
+      </div>
+      <div id="ctk_day_detail" class="ctk-day-detail"></div>
+
       <h4>新增／修改紀錄</h4>
       <div class="ctk-row">
         <select id="ctk_type" class="text_pole"></select>
@@ -500,6 +540,111 @@ const PANEL_HTML = `
 
 let editingEvent = null;
 let editingMemo = null;
+let calMonth = null; // { y, m }，m 為 0–11
+let selectedDay = null;
+
+const TYPE_ICONS = { sex: '❤️', symptom: '🤕', mood: '💭' };
+
+function markRange(map, from, to, key) {
+    for (let d = from; d <= to; d = addDays(d, 1)) {
+        map[d] ??= {};
+        map[d][key] = true;
+    }
+}
+
+// 算出每一天的經期／預測／排卵期狀態
+function buildDayMap(state) {
+    const map = {};
+    const cyc = computeCycle(state);
+    if (cyc) {
+        for (const r of cyc.ranges) {
+            if (r.end) markRange(map, r.start, r.end, 'period');
+            else markRange(map, r.start, r.estEnd, 'periodEst');
+        }
+        const fertile = ovu => {
+            markRange(map, addDays(ovu, -5), addDays(ovu, 1), 'fertile');
+            markRange(map, ovu, ovu, 'ovulation');
+        };
+        for (let i = 1; i < cyc.starts.length; i++) {
+            if (diffDays(cyc.starts[i - 1], cyc.starts[i]) >= 15) fertile(addDays(cyc.starts[i], -14));
+        }
+        for (let k = 1; k <= 3; k++) {
+            const start = addDays(cyc.lastStart, k * cyc.cycleLen);
+            markRange(map, start, addDays(start, cyc.periodLen - 1), 'pred');
+            fertile(addDays(start, -14));
+        }
+    }
+    for (const e of state.events) {
+        map[e.date] ??= {};
+        (map[e.date].events ??= []).push(e);
+    }
+    return map;
+}
+
+function dayInfoText(info) {
+    if (!info) return '';
+    const tags = [];
+    if (info.period) tags.push('經期');
+    else if (info.periodEst) tags.push('經期（推估）');
+    else if (info.pred) tags.push('預測經期');
+    if (info.ovulation) tags.push('預估排卵日');
+    else if (info.fertile) tags.push('排卵期');
+    return tags.join('・');
+}
+
+function renderCalendar(state) {
+    const t = today();
+    calMonth ??= { y: +t.slice(0, 4), m: +t.slice(5, 7) - 1 };
+    const { y, m } = calMonth;
+    $('#ctk_cal_title').text(`${y} 年 ${m + 1} 月`);
+
+    const map = state ? buildDayMap(state) : {};
+    const first = new Date(y, m, 1);
+    const days = new Date(y, m + 1, 0).getDate();
+    const cells = WEEKDAYS.map(w => `<div class="ctk-cal-head">${w}</div>`);
+    for (let i = 0; i < first.getDay(); i++) cells.push('<div class="ctk-cal-blank"></div>');
+    for (let d = 1; d <= days; d++) {
+        const date = fmt(new Date(y, m, d));
+        const info = map[date] ?? {};
+        const cls = ['ctk-day'];
+        if (info.period) cls.push('period');
+        else if (info.periodEst) cls.push('period-est');
+        else if (info.pred) cls.push('period-pred');
+        if (info.fertile && !info.period && !info.periodEst) cls.push('fertile');
+        if (info.ovulation) cls.push('ovulation');
+        if (date === t) cls.push('today');
+        if (date === selectedDay) cls.push('selected');
+        const icons = [...new Set((info.events ?? []).map(e => TYPE_ICONS[e.type]).filter(Boolean))];
+        const others = (info.events ?? []).filter(e => !TYPE_ICONS[e.type] && !e.type.startsWith('period_')).length;
+        const marks = icons.slice(0, 2).join('') + (icons.length > 2 || others ? '•' : '');
+        cells.push(`<div class="${cls.join(' ')}" data-date="${date}"><span class="ctk-num">${d}</span><span class="ctk-marks">${marks}</span></div>`);
+    }
+    $('#ctk_calendar').html(cells.join(''));
+    renderDayDetail(state, map);
+}
+
+function eventItemHtml(e) {
+    return `
+      <div class="ctk-item" data-id="${esc(e.id)}">
+        <span class="ctk-meta">${esc(e.date)} · ${esc(typeLabel(e.type))}${e.by === 'ai' ? ' · AI' : ''}</span>
+        <span class="ctk-text">${esc(e.note)}</span>
+        <span class="ctk-actions">
+          <i class="fa-solid fa-pen ctk-edit-event" title="修改"></i>
+          <i class="fa-solid fa-trash ctk-del-event" title="刪除"></i>
+        </span>
+      </div>`;
+}
+
+function renderDayDetail(state, map) {
+    const box = $('#ctk_day_detail');
+    if (!selectedDay || !state) return box.empty();
+    const info = map[selectedDay];
+    const events = (info?.events ?? []).slice().sort((a, b) => (a.id > b.id ? 1 : -1));
+    const status = dayInfoText(info);
+    box.html(`
+      <div class="ctk-day-title">${esc(selectedDay)}（週${WEEKDAYS[new Date(toUTC(selectedDay)).getUTCDay()]}）${status ? ` · ${esc(status)}` : ''}</div>
+      ${events.length ? events.map(eventItemHtml).join('') : '<div class="ctk-empty">這天沒有紀錄，可以在下面新增</div>'}`);
+}
 
 function renderTypeOptions() {
     const sel = $('#ctk_type');
@@ -517,15 +662,8 @@ function renderLists() {
     const events = state ? sortedEvents(state).reverse() : [];
     const memos = state ? state.memos : [];
 
-    $('#ctk_events').html(events.length ? events.map(e => `
-      <div class="ctk-item" data-id="${esc(e.id)}">
-        <span class="ctk-meta">${esc(e.date)} · ${esc(typeLabel(e.type))}${e.by === 'ai' ? ' · AI' : ''}</span>
-        <span class="ctk-text">${esc(e.note)}</span>
-        <span class="ctk-actions">
-          <i class="fa-solid fa-pen ctk-edit-event" title="修改"></i>
-          <i class="fa-solid fa-trash ctk-del-event" title="刪除"></i>
-        </span>
-      </div>`).join('') : '<div class="ctk-empty">還沒有紀錄</div>');
+    $('#ctk_events').html(events.length ? events.map(eventItemHtml).join('') : '<div class="ctk-empty">還沒有紀錄</div>');
+    renderCalendar(state);
 
     $('#ctk_memos').html(memos.length ? memos.map(m => `
       <div class="ctk-item" data-id="${esc(m.id)}">
@@ -594,11 +732,12 @@ function bindPanel() {
         if (existing) Object.assign(existing, data);
         else state.events.push({ id: nextId(state, 'e'), ...data, by: 'user' });
         resetEventForm();
+        if (selectedDay) $('#ctk_date').val(selectedDay);
         afterChange();
     });
     $('#ctk_cancel_event').on('click', resetEventForm);
 
-    $('#ctk_events').on('click', '.ctk-edit-event', function () {
+    $('#ctk_settings').on('click', '.ctk-edit-event', function () {
         const id = $(this).closest('.ctk-item').data('id');
         const e = getState()?.events.find(x => x.id === id);
         if (!e) return;
@@ -610,13 +749,33 @@ function bindPanel() {
         $('#ctk_save_event').text(`儲存修改（${id}）`);
         $('#ctk_cancel_event').removeClass('ctk-hidden');
     });
-    $('#ctk_events').on('click', '.ctk-del-event', async function () {
+    $('#ctk_settings').on('click', '.ctk-del-event', async function () {
         const id = $(this).closest('.ctk-item').data('id');
         const state = getState();
         const e = state?.events.find(x => x.id === id);
         if (!e || !(await confirmDelete(`${e.date} ${typeLabel(e.type)} ${e.note ?? ''}`))) return;
         state.events = state.events.filter(x => x.id !== id);
         afterChange();
+    });
+
+    $('#ctk_calendar').on('click', '.ctk-day', function () {
+        const date = $(this).data('date');
+        selectedDay = selectedDay === date ? null : date;
+        if (selectedDay && !editingEvent) $('#ctk_date').val(selectedDay);
+        renderLists();
+    });
+    const shiftMonth = n => {
+        const d = new Date(calMonth.y, calMonth.m + n, 1);
+        calMonth = { y: d.getFullYear(), m: d.getMonth() };
+        renderLists();
+    };
+    $('#ctk_cal_prev').on('click', () => shiftMonth(-1));
+    $('#ctk_cal_next').on('click', () => shiftMonth(1));
+    $('#ctk_cal_today').on('click', () => {
+        calMonth = null;
+        selectedDay = today();
+        if (!editingEvent) $('#ctk_date').val(selectedDay);
+        renderLists();
     });
 
     $('#ctk_save_memo').on('click', () => {
@@ -708,6 +867,7 @@ jQuery(async () => {
     eventSource.on(event_types.MESSAGE_SWIPED, id => onSwiped(Number(id)));
     eventSource.on(event_types.MESSAGE_DELETED, len => onDeleted(Number(len)));
     eventSource.on(event_types.CHAT_CHANGED, () => {
+        selectedDay = null;
         resetEventForm();
         resetMemoForm();
         updatePrompt();
