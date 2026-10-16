@@ -371,6 +371,30 @@ function computeCycle(state) {
     return { starts, ends, ranges, recent, avg, cycleLen, periodLen, lastStart: starts[starts.length - 1] };
 }
 
+// 提供給其他插件（例如主動訊息）讀取的目前週期狀態
+function cycleStatus(key = charKey()) {
+    const state = getState(key);
+    const cyc = state && computeCycle(state);
+    if (!cyc) return null;
+    const t = today();
+    const last = cyc.ranges[cyc.ranges.length - 1];
+    const lastEnd = last.end ?? last.estEnd;
+    const inPeriod = last.start <= t && t <= lastEnd;
+    const next = addDays(cyc.lastStart, cyc.cycleLen);
+    const daysUntilNext = diffDays(t, next);
+    return {
+        inPeriod,
+        periodDay: inPeriod ? diffDays(last.start, t) + 1 : null,
+        cycleDay: diffDays(cyc.lastStart, t) + 1,
+        nextDate: next,
+        daysUntilNext,
+        late: !inPeriod && daysUntilNext < 0 ? -daysUntilNext : 0,
+        cycleLen: cyc.cycleLen,
+    };
+}
+
+globalThis.CycleTracker = { getStatus: cycleStatus };
+
 function periodSummary(state) {
     const t = today();
     const cyc = computeCycle(state);

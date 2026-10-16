@@ -30,3 +30,7 @@ TauriTavern／SillyTavern → 擴充功能 → 安裝擴充功能 → 貼上本�
 ## 注意
 
 週期預測與排卵期都只是依平均天數推算的估計，**不能當作避孕或醫療依據**。
+
+## 給其他插件用
+
+`globalThis.CycleTracker.getStatus()` 會回傳目前角色的週期狀態（`inPeriod`、`periodDay`、`daysUntilNext`、`late` 等），「主動訊息」插件就是用它來在經期前後主動關心。
